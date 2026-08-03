@@ -4,7 +4,7 @@ A generic, plug-and-play development workflow for product teams — especially t
 
 Drop this file into a new repo (or keep it as its own repo and reference it), swap in your tool names where noted, and treat it as the team contract.
 
-Sections 1–9 describe the workflow at full maturity. Not all of it applies from day one — §10 stages the adoption from rapid prototyping through to production, and earlier stages deliberately relax some of the rules below.
+Sections 1–10 describe the workflow at full maturity. Not all of it applies from day one — §11 stages the adoption from rapid prototyping through to production, and earlier stages deliberately relax some of the rules below.
 
 ---
 
@@ -88,11 +88,13 @@ Rules of thumb:
    - **Parallel agents must use isolated worktrees.** Agents sharing one working directory will fight over the checked-out branch and lose edits. One worktree per concurrent agent.
 2. **One theme per PR.** Multiple concerns → multiple branches and PRs.
 3. **PRs carry a Summary and a Test plan.** The summary says what changed and why (linking the issue); the test plan says how it was verified.
+   - **New dependencies are named and justified in the summary.** Agents love solving problems by adding packages. Prefer the standard library and dependencies already in the tree; an unexplained new package is a legitimate reason to pause the merge loop for a human look.
 4. **A request for a PR authorises the full loop** — whoever raises the PR (human or agent) runs it end-to-end without pausing for permission at each stage:
    1. Raise the PR, linked to its issue.
    2. **Run a code review on the diff.** Fix critical findings and quick wins (small, contained, low-risk) directly on the branch and push. File anything larger as a follow-up issue rather than blocking the merge. Report the review and fixes as you go — visibility, not permission.
    3. **Wait for CI.** If it fails, diagnose from the job logs, fix, and push until green.
    4. **Merge** (squash, delete the branch) once CI is green and review findings are addressed.
+   - **Use a merge queue once agents merge in parallel.** Two PRs that are each green against a stale default branch can be red together; the queue re-validates each merge against the true tip.
 5. **Stop and check with a human when:** a review finding is real but not quickly fixable (especially security, data-integrity, or money concerns); the fix would change scope beyond the issue; or the PR contains destructive migrations. Otherwise the merge is pre-authorised by the PR request.
 
 Squash-merging keeps the default branch history one-commit-per-issue, which makes reverts and archaeology trivial.
@@ -104,6 +106,7 @@ Squash-merging keeps the default branch history one-commit-per-issue, which make
 Every guarantee is a required check on PRs to the default branch. A recommended baseline:
 
 - **Typecheck** — `tsc --noEmit` (or equivalent) per package. In a monorepo, run one job per package so failures are attributed instantly.
+- **Lint + format** — a zero-warnings linter and formatter check (e.g. ESLint/Biome/oxlint + Prettier). Agents drift stylistically across sessions; one enforced style keeps diffs reviewable and removes a whole category of noise from history.
 - **Unit tests** — the full unit suite, per package.
 - **Build + boot smoke test** — compile the production artefact and actually start it with dummy env vars, failing if the process dies within a few seconds. This catches whole classes of runtime errors (module resolution, ESM/CJS interop, missing env validation) that neither typecheck nor unit tests see.
 - **Integration tests** — run against a real database spun up as a CI service container (e.g. Postgres in Docker), with migrations applied. No mocked persistence for data-layer tests.
@@ -149,13 +152,27 @@ Assumes a migration-based ORM (Prisma, Drizzle, ActiveRecord, Alembic — the ru
 - **Staging mirrors production** on separate infrastructure with a fully isolated database, seeded test accounts, and provider *test-mode* keys (payments, email, push). Any branch can be deployed to staging via a manually triggered workflow — deploy feature branches to staging before merging when the change warrants a real-environment check.
 - **Deploys are scheduled, not merge-triggered.** A nightly workflow deploys the default branch to production; merging alone ships nothing until then. Need it sooner? Trigger the deploy workflow manually. This decouples "merged" from "live" and batches risk into a known window.
 - **Offer a scoped fast-path deploy** for isolated surfaces (e.g. a marketing site): a workflow that rebuilds and reloads only that app, skips migrations, and refuses to run if the dependency lockfile changed since the last full deploy.
+- **Per-PR preview deployments** (where the platform offers them, e.g. Vercel/Netlify/Fly) are the fastest way to review UI work — the reviewer clicks a link instead of deploying a branch. Staging remains the place for full-stack checks against a real database and provider test modes.
+- **Error tracking runs in every deployed environment** (e.g. Sentry). Prevention is CI's job; detection is this one — reassurance comes from finding out about breakage in minutes, not from a user's email.
+- **Revert first, debug later.** When a production deploy misbehaves, roll back immediately — squash-merge history makes the revert one clean commit — then diagnose on a branch at leisure.
 - Seed scripts create known test accounts per role (admin, end user, tenant/operator) so staging is usable immediately after a reset.
 
 ---
 
-## 10. Staged Adoption
+## 10. Agent Instructions
 
-Each piece of machinery above earns its keep only once the thing it protects exists: the migration drift check arrives with the database, staging arrives with users, scheduled deploys arrive with users you can hurt. Adopting any of it earlier is drag; later is gambling. Where an earlier stage relaxes a rule from §1–9 (committing to the default branch, merge-triggered deploys), the stage wins — the numbered sections describe the end state.
+The repo's agent instructions file (`CLAUDE.md`, `AGENTS.md`, or your tool's equivalent) is the highest-leverage artefact in an AI-driven codebase: it is the one file every agent reads before touching anything, so improvements to it compound across every future session.
+
+- **Present from the first commit**, carrying: build/test/lint commands, project structure, naming and code conventions, and the architectural decisions that aren't obvious from reading the code.
+- **Reference this workflow doc from it**, so agents operate under the same contract as humans.
+- **Update it whenever an agent learns something the hard way.** A gotcha hit twice is a documentation failure, not an agent failure. Encoding the lesson costs a minute and pays out on every session after.
+- **Keep it short and current.** Agents trust it verbatim, so a stale instruction is worse than a missing one. Prune as aggressively as you add.
+
+---
+
+## 11. Staged Adoption
+
+Each piece of machinery above earns its keep only once the thing it protects exists: the migration drift check arrives with the database, staging arrives with users, scheduled deploys arrive with users you can hurt. Adopting any of it earlier is drag; later is gambling. Where an earlier stage relaxes a rule from §1–10 (committing to the default branch, merge-triggered deploys), the stage wins — the numbered sections describe the end state.
 
 ### Stage 1 — Rapid prototyping
 
@@ -163,7 +180,7 @@ Each piece of machinery above earns its keep only once the thing it protects exi
 
 The product is exploratory, the code may be throwaway, and there may be no real backend, database, or users yet.
 
-- **Agent instructions from the first commit.** A `CLAUDE.md` (or equivalent) carrying build/test commands, conventions, and architecture decisions is the highest-leverage artefact for AI-driven speed. Update it whenever an agent learns something the hard way.
+- **Agent instructions from the first commit** (§10). A `CLAUDE.md` (or equivalent) carrying build/test commands, conventions, and architecture decisions is the highest-leverage artefact for AI-driven speed. Update it whenever an agent learns something the hard way.
 - **Minimal CI now.** Typecheck + lint + unit tests. It's ~20 lines of workflow YAML, runs in under a minute, and gives agents automatic feedback without a human re-running anything. This is the one piece of later-stage machinery cheap enough to have from day one.
 - **Branching is situational.** Direct commits to the default branch are fine while one agent works at a time. The moment agents run in parallel, use branches and isolated worktrees (§5.1) — not for review ceremony, but so they don't clobber each other. No PRs or branch protection required.
 - **Issues are optional.** A rough todo list is enough. But start writing Gherkin-style scenarios *in prompts* when briefing an agent on a feature — it costs nothing and builds the habit that becomes the Stage 2 checkpoint.
@@ -213,9 +230,9 @@ External users, real data, first revenue.
 
 ---
 
-## 11. Adoption Checklist
+## 12. Adoption Checklist
 
-The full build-out, for reference — sequence it per §10 rather than doing it all up front:
+The full build-out, for reference — sequence it per §11 rather than doing it all up front:
 
 - [ ] Create the project board with **Backlog / Todo / In Progress / Done** and labels `feat` / `fix` / `chore`
 - [ ] Add this file to the repo (e.g. `docs/DEV_WORKFLOW.md`) and reference it from the repo's agent/contributor instructions (`CLAUDE.md`, `CONTRIBUTING.md`)
