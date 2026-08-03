@@ -4,6 +4,8 @@ A generic, plug-and-play development workflow for product teams — especially t
 
 Drop this file into a new repo (or keep it as its own repo and reference it), swap in your tool names where noted, and treat it as the team contract.
 
+Sections 1–9 describe the workflow at full maturity. Not all of it applies from day one — §10 stages the adoption from rapid prototyping through to production, and earlier stages deliberately relax some of the rules below.
+
 ---
 
 ## 1. Principles
@@ -151,14 +153,75 @@ Assumes a migration-based ORM (Prisma, Drizzle, ActiveRecord, Alembic — the ru
 
 ---
 
-## 10. Adoption Checklist
+## 10. Staged Adoption
 
-Bootstrapping a new project onto this workflow:
+Each piece of machinery above earns its keep only once the thing it protects exists: the migration drift check arrives with the database, staging arrives with users, scheduled deploys arrive with users you can hurt. Adopting any of it earlier is drag; later is gambling. Where an earlier stage relaxes a rule from §1–9 (committing to the default branch, merge-triggered deploys), the stage wins — the numbered sections describe the end state.
+
+### Stage 1 — Rapid prototyping
+
+**Goal: maximum iteration speed. The only sin is slowing down.**
+
+The product is exploratory, the code may be throwaway, and there may be no real backend, database, or users yet.
+
+- **Agent instructions from the first commit.** A `CLAUDE.md` (or equivalent) carrying build/test commands, conventions, and architecture decisions is the highest-leverage artefact for AI-driven speed. Update it whenever an agent learns something the hard way.
+- **Minimal CI now.** Typecheck + lint + unit tests. It's ~20 lines of workflow YAML, runs in under a minute, and gives agents automatic feedback without a human re-running anything. This is the one piece of later-stage machinery cheap enough to have from day one.
+- **Branching is situational.** Direct commits to the default branch are fine while one agent works at a time. The moment agents run in parallel, use branches and isolated worktrees (§5.1) — not for review ceremony, but so they don't clobber each other. No PRs or branch protection required.
+- **Issues are optional.** A rough todo list is enough. But start writing Gherkin-style scenarios *in prompts* when briefing an agent on a feature — it costs nothing and builds the habit that becomes the Stage 2 checkpoint.
+- **Skip entirely:** branch protection, PR ceremony, integration/E2E tests, the BDD toolchain, staging, migration checks, the secrets inventory.
+
+**Exit when:** you commit to keeping the codebase — concretely, when a real backend/database replaces mocks, or the first person who isn't on the team uses it.
+
+### Stage 2 — Alpha
+
+**Goal: stop breaking your own momentum. Regressions now cost re-work.**
+
+Real backend, real database, first test users.
+
+- **Branch protection on:** PRs only, required CI checks, squash merge, delete branch on merge. This is the single biggest ratchet — everything else hangs off it.
+- **Issue-driven workflow starts for real** (§2): every piece of work is an issue, PRs link `Closes #N`, and the split-don't-expand scope rule applies.
+- **Scenario comments become the human checkpoint** (§3): Given/When/Then reviewed on the issue before the agent implements. Human leverage moves from reviewing code to reviewing intent.
+- **CI grows:** build + boot smoke test (now that there is a server to boot), and the **migration drift check the same week the database arrives** — far easier to adopt at migration #1 than at migration #50.
+- **Error tracking now** (e.g. Sentry), not later. The moment a test user hits a bug nobody saw, detection beats prevention.
+- **Deploys stay continuous and merge-triggered.** Feedback speed is still worth more than batched risk.
+- **Merges are human-approved.** The agent runs the PR loop up to the merge; a human clicks the button. CI hasn't earned auto-merge trust yet.
+
+**Exit when:** external users you can't personally apologise to, real data you can't regenerate, or money.
+
+### Stage 3 — Beta
+
+**Goal: protect user trust. Breakage now has a blast radius beyond the team.**
+
+External users, real data, first revenue.
+
+- **Define the critical flows list** and wire the **BDD toolchain** (§3.4): executable `.feature` files, generator compile step in CI. The scenarios written since Alpha become machine-enforced.
+- **Integration tests against a real database in CI** (§6); **E2E suite**, path-filtered with a hard timeout.
+- **Staging environment** (§9): isolated database, seeded test accounts, provider test-mode keys, deploy-any-branch workflow.
+- **Secrets into the CI store + `SECRETS.md`** (§8); destructive migrations always get human review (§7).
+- **Agent auto-merge unlocks here** — CI now has a track record. Add a **merge queue** if parallel agents are merging, so two individually-green PRs can't be jointly red.
+- **Scheduled dependency audit** (§6).
+
+**Exit when:** enough paying users that a bad deploy is a support incident, not an oops.
+
+### Stage 4 — Production
+
+**Goal: batch risk, detect fast, keep the suite honest.**
+
+- **Scheduled deploys + manual trigger** (§9) — "merged" and "live" now decouple, batching risk into a known window. Add the scoped fast-path deploy for isolated surfaces.
+- **Synthetic monitoring** exercising critical paths on a schedule.
+- **Mutation testing** on core business logic, so green tests provably assert something.
+- **Formalise revert-first, debug-later** — squash history makes a revert one click — and enforce the flaky-test rule: fixed or deleted the week it flakes.
+
+---
+
+## 11. Adoption Checklist
+
+The full build-out, for reference — sequence it per §10 rather than doing it all up front:
 
 - [ ] Create the project board with **Backlog / Todo / In Progress / Done** and labels `feat` / `fix` / `chore`
 - [ ] Add this file to the repo (e.g. `docs/DEV_WORKFLOW.md`) and reference it from the repo's agent/contributor instructions (`CLAUDE.md`, `CONTRIBUTING.md`)
 - [ ] Protect the default branch: PRs only, required CI checks, squash merge, delete branch on merge
-- [ ] Set up CI: typecheck, unit tests, build + boot smoke test, integration tests against a real DB, migration drift check
+- [ ] Set up CI: typecheck, lint, unit tests, build + boot smoke test, integration tests against a real DB, migration drift check
+- [ ] Wire up error tracking (e.g. Sentry) for every deployed environment
 - [ ] Wire the BDD toolchain (feature files + step definitions + generator) and add the compile step to CI
 - [ ] Decide the list of **critical flows** that require executable feature files
 - [ ] Create the staging environment and its deploy-any-branch workflow
